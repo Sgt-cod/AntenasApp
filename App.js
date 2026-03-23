@@ -3,7 +3,7 @@ import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { StatusBar } from "expo-status-bar";
-import { View, Text, ActivityIndicator } from "react-native";
+import { View, Text, ActivityIndicator, ScrollView } from "react-native";
 import * as Location from "expo-location";
 import MapaScreen from "./src/screens/MapaScreen";
 import SinalScreen from "./src/screens/SinalScreen";
@@ -11,8 +11,16 @@ import HistoricoScreen from "./src/screens/HistoricoScreen";
 
 const Tab = createBottomTabNavigator();
 
+const erros = [];
+const originalHandler = ErrorUtils.getGlobalHandler();
+ErrorUtils.setGlobalHandler((error, isFatal) => {
+  erros.push({ message: error.message, stack: error.stack, isFatal });
+  originalHandler(error, isFatal);
+});
+
 export default function App() {
   const [pronto, setPronto] = useState(false);
+  const [erroVisivel, setErroVisivel] = useState(null);
 
   useEffect(() => {
     async function init() {
@@ -20,7 +28,30 @@ export default function App() {
       setPronto(true);
     }
     init();
+
+    const interval = setInterval(() => {
+      if (erros.length > 0) {
+        setErroVisivel(erros[erros.length - 1]);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
   }, []);
+
+  if (erroVisivel) {
+    return (
+      <ScrollView style={{ flex:1, backgroundColor:"#0a0f1e", padding:20, paddingTop:50 }}>
+        <Text style={{ color:"#ff4444", fontSize:16, fontWeight:"bold", marginBottom:10 }}>
+          ERRO CAPTURADO:
+        </Text>
+        <Text style={{ color:"#fff", fontSize:12, marginBottom:10 }}>
+          {erroVisivel.message}
+        </Text>
+        <Text style={{ color:"#8899aa", fontSize:10 }}>
+          {erroVisivel.stack}
+        </Text>
+      </ScrollView>
+    );
+  }
 
   if (!pronto) {
     return (
@@ -54,4 +85,4 @@ export default function App() {
       </Tab.Navigator>
     </NavigationContainer>
   );
-}
+          }
