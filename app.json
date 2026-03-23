@@ -19,13 +19,22 @@
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
-        "READ_PHONE_STATE"
+        "READ_PHONE_STATE",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.READ_PHONE_STATE"
       ]
     },
     "plugins": [
       "expo-location",
       "expo-cellular",
       "expo-sqlite"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "bd04bc60-260c-4b84-8e90-acce7448186a"
+      }
+    },
+    "owner": "sgt-code"
   }
 }
