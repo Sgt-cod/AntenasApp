@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Modal, ScrollView } from "react-native";
-import MapView, { Marker, Circle } from "react-native-maps";
 import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
+import { WebView } from "react-native-webview";
 
 const RAIO = { "5G":500, "4G":2000, "3G":5000, "2G":10000 };
 const COR = { "5G":"#00ff88", "4G":"#00d4ff", "3G":"#ffaa00", "2G":"#ff6600" };
@@ -14,7 +14,6 @@ export default function MapaScreen() {
   const [selecionada, setSelecionada] = useState(null);
   const [filtro, setFiltro] = useState("Todas");
   const [mostrarRaios, setMostrarRaios] = useState(true);
-  const mapRef = useRef(null);
 
   useEffect(() => { iniciar(); }, []);
 
@@ -34,7 +33,7 @@ export default function MapaScreen() {
   function gerarDemo(lat, lon) {
     const ops = ["Claro","Vivo","TIM","Oi"];
     const tecs = ["5G","4G","4G","4G","3G","3G","2G"];
-    return Array.from({ length:30 }, (_, i) => {
+    return Array.from({ length:20 }, (_, i) => {
       const tec = tecs[Math.floor(Math.random() * tecs.length)];
       return {
         id: i,
@@ -48,18 +47,34 @@ export default function MapaScreen() {
     });
   }
 
-  function irParaMim() {
-    if (localizacao && mapRef.current) {
-      mapRef.current.animateToRegion({
-        latitude: localizacao.latitude,
-        longitude: localizacao.longitude,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      }, 800);
-    }
-  }
-
   const filtradas = filtro === "Todas" ? antenas : antenas.filter(a => a.tecnologia === filtro);
+
+  function gerarHTML() {
+    const lat = localizacao?.latitude || -15.7801;
+    const lon = localizacao?.longitude || -47.9292;
+    const marcadores = filtradas.map(a => `
+      L.circleMarker([${a.latitude}, ${a.longitude}], {
+        radius: 8, color: "${COR[a.tecnologia] || "#fff"}", fillColor: "${COR[a.tecnologia] || "#fff"}", fillOpacity: 0.8
+      }).addTo(map).bindPopup("<b>${a.tecnologia}</b><br>${a.operadora}<br>${a.frequencia}");
+      ${mostrarRaios ? `L.circle([${a.latitude}, ${a.longitude}], { radius: ${a.raio}, color: "${COR[a.tecnologia] || "#fff"}", fillOpacity: 0.05, weight: 1 }).addTo(map);` : ""}
+    `).join("");
+    return `<!DOCTYPE html><html><head>
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+      <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+      <style>body{margin:0;padding:0;}#map{width:100%;height:100vh;background:#0a0f1e;}</style>
+    </head><body>
+      <div id="map"></div>
+      <script>
+        var map = L.map("map", { zoomControl: true }).setView([${lat}, ${lon}], 14);
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          attribution: "OpenStreetMap", maxZoom: 19
+        }).addTo(map);
+        L.circleMarker([${lat}, ${lon}], { radius: 10, color: "#fff", fillColor: "#00d4ff", fillOpacity: 1 }).addTo(map).bindPopup("Voce esta aqui");
+        ${marcadores}
+      </script>
+    </body></html>`;
+  }
 
   if (carregando) {
     return (
@@ -72,40 +87,12 @@ export default function MapaScreen() {
 
   return (
     <View style={styles.container}>
-      <MapView
-        ref={mapRef}
+      <WebView
+        source={{ html: gerarHTML() }}
         style={styles.mapa}
-        initialRegion={{
-          latitude: localizacao?.latitude || -15.7801,
-          longitude: localizacao?.longitude || -47.9292,
-          latitudeDelta: 0.05,
-          longitudeDelta: 0.05,
-        }}
-        showsUserLocation={true}
-        showsMyLocationButton={false}
-      >
-        {filtradas.map((a) => (
-          <Marker
-            key={a.id}
-            coordinate={{ latitude: a.latitude, longitude: a.longitude }}
-            onPress={() => setSelecionada(a)}
-          >
-            <View style={[styles.marcador, { borderColor: COR[a.tecnologia] || "#fff" }]}>
-              <Text style={[styles.marcadorTexto, { color: COR[a.tecnologia] || "#fff" }]}>{a.tecnologia}</Text>
-            </View>
-          </Marker>
-        ))}
-        {mostrarRaios && filtradas.map((a) => (
-          <Circle
-            key={"r" + a.id}
-            center={{ latitude: a.latitude, longitude: a.longitude }}
-            radius={a.raio}
-            strokeColor={(COR[a.tecnologia] || "#fff") + "88"}
-            fillColor={(COR[a.tecnologia] || "#fff") + "15"}
-            strokeWidth={1}
-          />
-        ))}
-      </MapView>
+        javaScriptEnabled={true}
+        originWhitelist={["*"]}
+      />
 
       <ScrollView horizontal style={styles.filtros} showsHorizontalScrollIndicator={false}>
         {["Todas","5G","4G","3G","2G"].map(t => (
@@ -118,39 +105,9 @@ export default function MapaScreen() {
         </TouchableOpacity>
       </ScrollView>
 
-      <TouchableOpacity style={styles.btnLoc} onPress={irParaMim}>
-        <Ionicons name="navigate" size={22} color="#00d4ff" />
-      </TouchableOpacity>
-
       <View style={styles.contador}>
         <Text style={styles.contadorTexto}>{filtradas.length} antenas</Text>
       </View>
-
-      <Modal visible={!!selecionada} transparent animationType="slide">
-        <TouchableOpacity style={styles.overlay} onPress={() => setSelecionada(null)}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTec, { color: COR[selecionada?.tecnologia] || "#fff" }]}>{selecionada?.tecnologia}</Text>
-              <Text style={styles.modalOp}>{selecionada?.operadora}</Text>
-            </View>
-            <View style={styles.modalRow}>
-              <Text style={styles.modalLabel}>Frequencia</Text>
-              <Text style={styles.modalValor}>{selecionada?.frequencia}</Text>
-            </View>
-            <View style={styles.modalRow}>
-              <Text style={styles.modalLabel}>Raio estimado</Text>
-              <Text style={styles.modalValor}>
-                {selecionada?.raio >= 1000 ? (selecionada.raio/1000).toFixed(1)+" km" : selecionada?.raio+"m"}
-              </Text>
-            </View>
-            <View style={styles.modalRow}>
-              <Text style={styles.modalLabel}>Coordenadas</Text>
-              <Text style={styles.modalValor}>{selecionada?.latitude?.toFixed(5)}, {selecionada?.longitude?.toFixed(5)}</Text>
-            </View>
-            <Text style={styles.modalFechar}>Toque fora para fechar</Text>
-          </View>
-        </TouchableOpacity>
-      </Modal>
     </View>
   );
 }
@@ -160,22 +117,10 @@ const styles = StyleSheet.create({
   mapa: { flex:1 },
   loading: { flex:1, backgroundColor:"#0a0f1e", alignItems:"center", justifyContent:"center", gap:16 },
   loadingTexto: { color:"#8899aa", fontSize:16 },
-  marcador: { backgroundColor:"#0a0f1ecc", borderWidth:2, borderRadius:8, paddingHorizontal:6, paddingVertical:2 },
-  marcadorTexto: { fontSize:10, fontWeight:"bold" },
   filtros: { position:"absolute", top:10, left:10, right:10, maxHeight:44 },
   filtroBtn: { backgroundColor:"#111827cc", borderWidth:1, borderColor:"#1a2540", borderRadius:20, paddingHorizontal:14, paddingVertical:8, marginRight:8 },
   filtroBtnAtivo: { backgroundColor:"#00d4ff" },
   filtroTexto: { color:"#fff", fontSize:12, fontWeight:"600" },
-  btnLoc: { position:"absolute", bottom:100, right:16, backgroundColor:"#111827", borderRadius:30, padding:14, borderWidth:1, borderColor:"#1a2540" },
-  contador: { position:"absolute", bottom:100, left:16, backgroundColor:"#111827cc", borderRadius:12, paddingHorizontal:12, paddingVertical:6 },
+  contador: { position:"absolute", bottom:20, left:16, backgroundColor:"#111827cc", borderRadius:12, paddingHorizontal:12, paddingVertical:6 },
   contadorTexto: { color:"#8899aa", fontSize:12 },
-  overlay: { flex:1, justifyContent:"flex-end", backgroundColor:"#00000066" },
-  modalCard: { backgroundColor:"#111827", borderTopLeftRadius:24, borderTopRightRadius:24, padding:24, borderTopWidth:1, borderColor:"#1a2540" },
-  modalHeader: { flexDirection:"row", alignItems:"center", gap:12, marginBottom:20 },
-  modalTec: { fontSize:32, fontWeight:"bold" },
-  modalOp: { color:"#fff", fontSize:20, fontWeight:"600" },
-  modalRow: { flexDirection:"row", justifyContent:"space-between", paddingVertical:12, borderBottomWidth:1, borderBottomColor:"#1a2540" },
-  modalLabel: { color:"#8899aa", fontSize:14 },
-  modalValor: { color:"#fff", fontSize:14, fontWeight:"600" },
-  modalFechar: { color:"#556", fontSize:12, textAlign:"center", marginTop:16 },
 });
