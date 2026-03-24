@@ -28,7 +28,8 @@
     "plugins": [
       "expo-location",
       "expo-cellular",
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-font"
     ],
     "extra": {
       "eas": {
