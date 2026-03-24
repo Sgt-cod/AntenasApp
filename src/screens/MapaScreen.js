@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Modal, ScrollView } from "react-native";
+import { useState, useEffect } from "react";
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import { WebView } from "react-native-webview";
@@ -11,7 +11,6 @@ export default function MapaScreen() {
   const [localizacao, setLocalizacao] = useState(null);
   const [antenas, setAntenas] = useState([]);
   const [carregando, setCarregando] = useState(true);
-  const [selecionada, setSelecionada] = useState(null);
   const [filtro, setFiltro] = useState("Todas");
   const [mostrarRaios, setMostrarRaios] = useState(true);
 
@@ -50,27 +49,46 @@ export default function MapaScreen() {
   const filtradas = filtro === "Todas" ? antenas : antenas.filter(a => a.tecnologia === filtro);
 
   function gerarHTML() {
-    const lat = localizacao?.latitude || -15.7801;
-    const lon = localizacao?.longitude || -47.9292;
+    const lat = localizacao?.latitude || -9.6658;
+    const lon = localizacao?.longitude || -35.7350;
+
     const marcadores = filtradas.map(a => `
-      L.circleMarker([${a.latitude}, ${a.longitude}], {
-        radius: 8, color: "${COR[a.tecnologia] || "#fff"}", fillColor: "${COR[a.tecnologia] || "#fff"}", fillOpacity: 0.8
-      }).addTo(map).bindPopup("<b>${a.tecnologia}</b><br>${a.operadora}<br>${a.frequencia}");
+      var iconeAntena${a.id} = L.divIcon({
+        html: '<div style="background:${COR[a.tecnologia] || "#fff"};color:#000;font-size:9px;font-weight:bold;padding:2px 5px;border-radius:6px;white-space:nowrap;">📡 ${a.tecnologia}</div>',
+        className: "", iconAnchor: [20, 10]
+      });
+      L.marker([${a.latitude}, ${a.longitude}], { icon: iconeAntena${a.id} })
+        .addTo(map)
+        .bindPopup("<b>${a.tecnologia}</b><br><b>Operadora:</b> ${a.operadora}<br><b>Frequencia:</b> ${a.frequencia}<br><b>Raio:</b> ${RAIO[a.tecnologia] >= 1000 ? (RAIO[a.tecnologia]/1000)+"km" : RAIO[a.tecnologia]+"m"}");
       ${mostrarRaios ? `L.circle([${a.latitude}, ${a.longitude}], { radius: ${a.raio}, color: "${COR[a.tecnologia] || "#fff"}", fillOpacity: 0.05, weight: 1 }).addTo(map);` : ""}
     `).join("");
+
     return `<!DOCTYPE html><html><head>
       <meta name="viewport" content="width=device-width, initial-scale=1">
       <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
       <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-      <style>body{margin:0;padding:0;}#map{width:100%;height:100vh;background:#0a0f1e;}</style>
+      <style>
+        body{margin:0;padding:0;}
+        #map{width:100%;height:100vh;}
+        .leaflet-popup-content-wrapper{background:#111827;color:#fff;border:1px solid #1a2540;}
+        .leaflet-popup-tip{background:#111827;}
+      </style>
     </head><body>
       <div id="map"></div>
       <script>
         var map = L.map("map", { zoomControl: true }).setView([${lat}, ${lon}], 14);
-        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-          attribution: "OpenStreetMap", maxZoom: 19
+        L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+          attribution: "CartoDB", maxZoom: 19
         }).addTo(map);
-        L.circleMarker([${lat}, ${lon}], { radius: 10, color: "#fff", fillColor: "#00d4ff", fillOpacity: 1 }).addTo(map).bindPopup("Voce esta aqui");
+
+        var iconeUser = L.divIcon({
+          html: '<div style="width:16px;height:16px;background:#00d4ff;border:3px solid #fff;border-radius:50%;box-shadow:0 0 8px #00d4ff;"></div>',
+          className: "", iconAnchor: [8, 8]
+        });
+        L.marker([${lat}, ${lon}], { icon: iconeUser })
+          .addTo(map)
+          .bindPopup("<b>Voce esta aqui</b>");
+
         ${marcadores}
       </script>
     </body></html>`;
