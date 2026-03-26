@@ -1,18 +1,18 @@
 import { useState, useEffect } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import { WebView } from "react-native-webview";
+import antenasData from "../assets/antenas_AL.json";
 
-const RAIO = { "5G":500, "4G":2000, "3G":5000, "2G":10000 };
-const COR = { "5G":"#00ff88", "4G":"#00d4ff", "3G":"#ffaa00", "2G":"#ff6600" };
+const COR = { "GSM":"#ff6600", "WCDMA":"#ffaa00", "LTE":"#00d4ff", "NR":"#00ff88" };
+const LABEL = { "GSM":"2G", "WCDMA":"3G", "LTE":"4G", "NR":"5G" };
+const RAIO = { "GSM":10000, "WCDMA":5000, "LTE":2000, "NR":500 };
 
 export default function MapaScreen() {
   const [localizacao, setLocalizacao] = useState(null);
-  const [antenas, setAntenas] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [filtro, setFiltro] = useState("Todas");
-  const [mostrarRaios, setMostrarRaios] = useState(true);
+  const [mostrarRaios, setMostrarRaios] = useState(false);
 
   useEffect(() => { iniciar(); }, []);
 
@@ -23,48 +23,46 @@ export default function MapaScreen() {
       if (status === "granted") {
         const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
         setLocalizacao(loc.coords);
-        setAntenas(gerarDemo(loc.coords.latitude, loc.coords.longitude));
       }
     } catch(e) {}
     setCarregando(false);
   }
 
-  function gerarDemo(lat, lon) {
-    const ops = ["Claro","Vivo","TIM","Oi"];
-    const tecs = ["5G","4G","4G","4G","3G","3G","2G"];
-    return Array.from({ length:20 }, (_, i) => {
-      const tec = tecs[Math.floor(Math.random() * tecs.length)];
-      return {
-        id: i,
-        latitude: lat + (Math.random() - 0.5) * 0.05,
-        longitude: lon + (Math.random() - 0.5) * 0.05,
-        operadora: ops[Math.floor(Math.random() * ops.length)],
-        tecnologia: tec,
-        raio: RAIO[tec],
-        frequencia: tec === "5G" ? "3500 MHz" : tec === "4G" ? "1800 MHz" : "900 MHz",
-      };
+  function filtrarProximas(lat, lon, raioKm = 5) {
+    return antenasData.filter(a => {
+      const dlat = (a.lat - lat) * 111;
+      const dlon = (a.lon - lon) * 111 * Math.cos(lat * Math.PI / 180);
+      return Math.sqrt(dlat*dlat + dlon*dlon) <= raioKm;
     });
   }
 
-  const filtradas = filtro === "Todas" ? antenas : antenas.filter(a => a.tecnologia === filtro);
+  const lat = localizacao?.latitude || -9.6658;
+  const lon = localizacao?.longitude || -35.7350;
+
+  const tecMap = { "Todas": null, "5G": "NR", "4G": "LTE", "3G": "WCDMA", "2G": "GSM" };
+  let antenasFiltradas = filtrarProximas(lat, lon, 5);
+  if (filtro !== "Todas") {
+    antenasFiltradas = antenasFiltradas.filter(a => a.tec === tecMap[filtro]);
+  }
 
   function gerarHTML() {
-    const lat = localizacao?.latitude || -9.6658;
-    const lon = localizacao?.longitude || -35.7350;
-
-    const marcadores = filtradas.map(a => `
-      var iconeAntena${a.id} = L.divIcon({
-        html: '<div style="background:${COR[a.tecnologia] || "#fff"};color:#000;font-size:9px;font-weight:bold;padding:2px 5px;border-radius:6px;white-space:nowrap;">📡 ${a.tecnologia}</div>',
-        className: "", iconAnchor: [20, 10]
-      });
-      L.marker([${a.latitude}, ${a.longitude}], { icon: iconeAntena${a.id} })
-        .addTo(map)
-        .bindPopup("<b>${a.tecnologia}</b><br><b>Operadora:</b> ${a.operadora}<br><b>Frequencia:</b> ${a.frequencia}<br><b>Raio:</b> ${RAIO[a.tecnologia] >= 1000 ? (RAIO[a.tecnologia]/1000)+"km" : RAIO[a.tecnologia]+"m"}");
-      ${mostrarRaios ? `L.circle([${a.latitude}, ${a.longitude}], { radius: ${a.raio}, color: "${COR[a.tecnologia] || "#fff"}", fillOpacity: 0.05, weight: 1 }).addTo(map);` : ""}
-    `).join("");
+    const marcadores = antenasFiltradas.map((a, i) => {
+      const cor = COR[a.tec] || "#fff";
+      const label = LABEL[a.tec] || a.tec;
+      const raio = RAIO[a.tec] || 2000;
+      return `
+        var ic${i} = L.divIcon({
+          html: '<div style="background:${cor};color:#000;font-size:9px;font-weight:bold;padding:2px 5px;border-radius:6px;white-space:nowrap;">📡 ${label}</div>',
+          className:"", iconAnchor:[20,10]
+        });
+        L.marker([${a.lat},${a.lon}], {icon:ic${i}}).addTo(map)
+          .bindPopup("<b>${label} - ${a.tec}</b><br><b>Operadora:</b> ${a.op}<br><b>Município:</b> ${a.mun}<br><b>Freq:</b> ${a.freq} MHz");
+        ${mostrarRaios ? `L.circle([${a.lat},${a.lon}],{radius:${raio},color:"${cor}",fillOpacity:0.05,weight:1}).addTo(map);` : ""}
+      `;
+    }).join("");
 
     return `<!DOCTYPE html><html><head>
-      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
       <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
       <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
       <style>
@@ -73,32 +71,23 @@ export default function MapaScreen() {
         .leaflet-popup-content-wrapper{background:#111827;color:#fff;border:1px solid #1a2540;}
         .leaflet-popup-tip{background:#111827;}
       </style>
-    </head><body>
-      <div id="map"></div>
-      <script>
-        var map = L.map("map", { zoomControl: true }).setView([${lat}, ${lon}], 14);
-        L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-          attribution: "CartoDB", maxZoom: 19
-        }).addTo(map);
-
-        var iconeUser = L.divIcon({
-          html: '<div style="width:16px;height:16px;background:#00d4ff;border:3px solid #fff;border-radius:50%;box-shadow:0 0 8px #00d4ff;"></div>',
-          className: "", iconAnchor: [8, 8]
-        });
-        L.marker([${lat}, ${lon}], { icon: iconeUser })
-          .addTo(map)
-          .bindPopup("<b>Voce esta aqui</b>");
-
-        ${marcadores}
-      </script>
-    </body></html>`;
+    </head><body><div id="map"></div><script>
+      var map = L.map("map").setView([${lat},${lon}],14);
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",{maxZoom:19}).addTo(map);
+      var icUser = L.divIcon({
+        html:'<div style="width:16px;height:16px;background:#00d4ff;border:3px solid #fff;border-radius:50%;box-shadow:0 0 8px #00d4ff;"></div>',
+        className:"",iconAnchor:[8,8]
+      });
+      L.marker([${lat},${lon}],{icon:icUser}).addTo(map).bindPopup("<b>Voce esta aqui</b>");
+      ${marcadores}
+    </script></body></html>`;
   }
 
   if (carregando) {
     return (
       <View style={styles.loading}>
         <ActivityIndicator size="large" color="#00d4ff" />
-        <Text style={styles.loadingTexto}>Carregando mapa...</Text>
+        <Text style={styles.loadingTexto}>Carregando antenas reais...</Text>
       </View>
     );
   }
@@ -114,17 +103,17 @@ export default function MapaScreen() {
 
       <ScrollView horizontal style={styles.filtros} showsHorizontalScrollIndicator={false}>
         {["Todas","5G","4G","3G","2G"].map(t => (
-          <TouchableOpacity key={t} style={[styles.filtroBtn, filtro === t && styles.filtroBtnAtivo]} onPress={() => setFiltro(t)}>
-            <Text style={[styles.filtroTexto, filtro === t && { color:"#0a0f1e" }]}>{t}</Text>
+          <TouchableOpacity key={t} style={[styles.filtroBtn, filtro===t && styles.filtroBtnAtivo]} onPress={() => setFiltro(t)}>
+            <Text style={[styles.filtroTexto, filtro===t && {color:"#0a0f1e"}]}>{t}</Text>
           </TouchableOpacity>
         ))}
         <TouchableOpacity style={[styles.filtroBtn, mostrarRaios && styles.filtroBtnAtivo]} onPress={() => setMostrarRaios(!mostrarRaios)}>
-          <Text style={[styles.filtroTexto, mostrarRaios && { color:"#0a0f1e" }]}>Raios</Text>
+          <Text style={[styles.filtroTexto, mostrarRaios && {color:"#0a0f1e"}]}>Raios</Text>
         </TouchableOpacity>
       </ScrollView>
 
       <View style={styles.contador}>
-        <Text style={styles.contadorTexto}>{filtradas.length} antenas</Text>
+        <Text style={styles.contadorTexto}>{antenasFiltradas.length} antenas num raio de 5km</Text>
       </View>
     </View>
   );
